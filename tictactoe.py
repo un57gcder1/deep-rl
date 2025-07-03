@@ -2,17 +2,24 @@
 
 class TicTacToe:
     def __init__(self):
-        self.board = [0, 1, 2
+        self.board = [0, 1, 2,
                       3, 4, 5,
                       6, 7, 8]
         self.x_player = "X"
         self.o_player = "O"
+        self.turn = self.x_player
 
     def move(self, player, position):
-        if self.board[position] == "X" or self.board[position] == "O":
+        if self.turn != player:
+            raise Exception("Cannot move before other player's turn")
+        elif self.board[position] == "X" or self.board[position] == "O":
             raise Exception("Cannot move to already taken position")
         else:
             self.board[position] = player
+            if player == self.x_player:
+                self.turn = self.o_player
+            elif player == self.o_player:
+                self.turn = self.x_player
 
     def full_board(self):
         for i in range(9):
@@ -41,7 +48,7 @@ class TicTacToe:
             full = 0
             for j in range(i, i+7, 3):
                 if self.board[j] == player:
-                    full++
+                    full+=1
             if full == 3:
                 return True
 
@@ -50,7 +57,7 @@ class TicTacToe:
             full = 0
             for j in range(i, i+3):
                 if self.board[j] == player:
-                    full++
+                    full+=1
             if full == 3:
                 return True
 
@@ -58,15 +65,39 @@ class TicTacToe:
         full = 0
         for i in range(0, 9, 4):
             if self.board[i] == player:
-                full++
+                full+=1
         if full == 3:
             return True
 
         full = 0
         for i in range(2, 7, 2):
             if self.board[i] == player:
-                full++
+                full+=1
         if full == 3:
             return True
         
         return False
+
+    def possible(self):
+        the = []
+        for i in range(9):
+            if self.board[i] == i:
+                the.append(i)
+        return the
+
+    def judge(self):
+        judge = random.randint(0, 1)
+        if judge == 0:
+            player = "X"
+        elif judge == 1:
+            player = "O"
+        return player
+
+    def rand_move(self, player):
+        possible = self.possible()
+        move = random.choice(possible)
+        self.move(player, move)
+        return move
+
+    def turn(self):
+        return self.turn
