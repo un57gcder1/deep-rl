@@ -1,4 +1,5 @@
 # Boilerplate implementation of a basic TicTacToe game
+import random
 
 class TicTacToe:
     def __init__(self):
@@ -14,6 +15,8 @@ class TicTacToe:
             raise Exception("Cannot move before other player's turn")
         elif self.board[position] == "X" or self.board[position] == "O":
             raise Exception("Cannot move to already taken position")
+        elif position not in self.possible():
+            raise Exception("Cannot move to impossible position")
         else:
             self.board[position] = player
             if player == self.x_player:
@@ -99,5 +102,3 @@ class TicTacToe:
         self.move(player, move)
         return move
 
-    def turn(self):
-        return self.turn
