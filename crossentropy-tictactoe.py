@@ -4,6 +4,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader, random_split
+import numpy as np
+
+EPT = 20
+ROUNDS = 10000
+TOTAL_EPOCHS = 5
+POINT = 200
+OPPONENT = "self"
 
 class Net(nn.Module):
     def __init__(self, x, h1, h2, y):
@@ -11,31 +18,60 @@ class Net(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(x, h1),
             nn.ReLU(),
-            nn.Linear(h1, h2),
-            nn.ReLU(),
-            nn.Linear(h2, y),
+            #nn.Linear(h1, h2),
+            #nn.ReLU(),
+            nn.Linear(h1, y),
         )
 
     def forward(self, x):
         return self.net(x)
 
-def the_model(observations):
-    stats = torch.load('stats.pt')
+def the_model(observations, possible):
+    # Loading
+    device = "cpu"
+    try:
+        stats = torch.load('stats.pt')
+    except:
+        return 11
     train_mean, train_std = stats['mean'], stats['std']
+    model = Net(10, 256, 128, 9).to(device)
+    model.load_state_dict(torch.load('model.pt', weights_only=True))
+    model.eval()
+    
+    real = process_inputs(observations)
+    real = (real - train_mean)/train_std
+    real = real.to(device)
+
+    with torch.no_grad():
+        logits = model(real)
+        probabilities = torch.softmax(logits, dim=1)
+        sampled_classes = torch.multinomial(probabilities, num_samples=1).squeeze(1)
+    probabilities = probabilities.cpu().numpy()
+    sampled_classes = sampled_classes.cpu().numpy()
+    """sorted_classes = np.argsort(-probabilities, axis=1)
+    for i in sorted_classes:
+        for j in i:
+            if j in possible:
+                return j"""
+    for i in sampled_classes:
+        if i in possible:
+            return i
+    return 11
+
 
 def how(game, player):
     board = game.board[:]
     board.append(player)
-    board = tuple(board)
-    move = 11 #move = the_model(board)
     possible = game.possible()
+    board = tuple(board)
+    move = the_model(board, possible)
     if move in possible:
         return ({board : move}, move)
     else:
         move = random.choice(possible)
         return ({board : move}, move)
 
-def play(game):
+def play(game, opponent):
     data = []
     # A list containing a dictionary: {observations: action},
     # where observations = [game.board, player]
@@ -53,10 +89,17 @@ def play(game):
             position = it[1]
             game.move(player, position)
         else:
-            game.rand_move(other)
+            if opponent == "random":
+                game.rand_move(other)
+            elif opponent == "self":
+                it = how(game, other)
+                position = it[1]
+                game.move(other, position)
     if game.result() == player: # Should ties be included?
-        return data
-    return 0
+        return (data, "Win")
+    elif game.result() == "Draw":
+        return (data, "Draw")
+    return (data, 0)
 
 # data is a list of dictionaries: {observations : actions}
 def preprocess(data):
@@ -77,36 +120,33 @@ def preprocess(data):
     inputs = torch.tensor(inputs, dtype=torch.float32)
     targets = torch.tensor(targets, dtype=torch.long)
     dataset = TensorDataset(inputs, targets)
-    train_mean = train_inputs.mean(dim=0)
-    train_std = train_inputs.std(dim=0)
+    train_mean = inputs.mean(dim=0)
+    train_std = inputs.std(dim=0)
     torch.save({'mean': train_mean, 'std': train_std}, 'stats.pt')
     return dataset
 
 def process_inputs(data):
     inputs = []
-    for d in data:
-        x = list(d.keys())[0]
-        float_x = []
-        for x_v in x:
-            if x_v == "X":
-                float_x.append(-2.0)
-            elif x_v == "O":
-                float_x.append(-1.0)
-            else:
-                float_x.append(float(x_v))
-        inputs.append(float_x)
-        targets.append(list(d.values())[0])
+    float_x = []
+    for x_v in data:
+        if x_v == "X":
+            float_x.append(-2.0)
+        elif x_v == "O":
+            float_x.append(-1.0)
+        else:
+            float_x.append(float(x_v))
+    inputs.append(float_x)
     inputs = torch.tensor(inputs, dtype=torch.float32)
     return inputs
 
-def train(dataset):
+def train(dataset, EPT):
     # Params
     x_dim = 10
     y_dim = 9
     h1 = 256
     h2 = 128
     batch_size = 64
-    epochs = 200
+    epochs = EPT
     lr = 0.001
     ratio = 0.8
     train_size = int(ratio * len(dataset))
@@ -156,13 +196,34 @@ def train(dataset):
 
     torch.save(model.state_dict(), 'model.pt')
 
-FIRST = []
-for i in range(100000):
-    game = TicTacToe()
-    r = play(game)
-    if r != 0:
-        for a in r:
-            FIRST.append(a)
-print(len(FIRST))
-dataset = preprocess(FIRST)
-train(dataset)
+for z in range(TOTAL_EPOCHS):
+    FIRST = []
+    wins = 0
+    ties = 0
+    for i in range(ROUNDS):
+        game = TicTacToe()
+        r = play(game, OPPONENT)
+        if r[1] != 0 and r[1] != "Draw":
+            wins+=1
+            for a in r[0]:
+                FIRST.append(a)
+            """what = random.randint(0, 1)
+            if what == 1:
+                for a in r[0]:
+                    FIRST.append(a)
+            else:
+                continue"""
+        elif r[1] == "Draw":
+            ties+=1
+            if z > POINT: # include ties after point+1 total epochs
+                for a in r[0]:
+                    FIRST.append(a)
+
+    print("ROUND: ", z+1)
+    print("Wins: ", wins)
+    print("Ties: ", ties)
+    print("Losses: ", ROUNDS-wins-ties)
+    print("Observations: ", len(FIRST))
+    dataset = preprocess(FIRST)
+    train(dataset, EPT)
+    print("")
